@@ -1,0 +1,6 @@
+streamlit
+pandas
+numpy
+yfinance
+python-dotenv
+# sqlite3 is part of Python's standard library — no install needed
