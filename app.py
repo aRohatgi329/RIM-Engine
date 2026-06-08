@@ -3,6 +3,51 @@ import streamlit as st
 
 from models.rim import run_rim
 
+
+# ---------------------------------------------------------------------------
+# Rule-based analysis
+# ---------------------------------------------------------------------------
+
+def _generate_analysis(results: list) -> str:
+    buys  = [r for r in results if r["signal"] == "BUY"]
+    holds = [r for r in results if r["signal"] == "HOLD"]
+    sells = [r for r in results if r["signal"] == "SELL"]
+
+    sentences = []
+
+    if buys:
+        names = ", ".join(
+            f"{r['ticker']} ({r['margin_of_safety_pct']:+.1f}% MoS)" for r in buys
+        )
+        sentences.append(
+            f"The model flags {names} as undervalued — "
+            f"{'each is' if len(buys) > 1 else 'it is'} trading at a meaningful discount "
+            "to its estimated residual-income value, offering a margin of safety above the 15% threshold."
+        )
+    if sells:
+        names = ", ".join(
+            f"{r['ticker']} ({r['margin_of_safety_pct']:+.1f}%)" for r in sells
+        )
+        sentences.append(
+            f"{names} {'appear' if len(sells) > 1 else 'appears'} overvalued — "
+            f"{'their' if len(sells) > 1 else 'its'} current market price exceeds "
+            "the RIM intrinsic value, leaving no margin of safety."
+        )
+    if holds:
+        names = ", ".join(r["ticker"] for r in holds)
+        sentences.append(
+            f"{names} {'sit' if len(holds) > 1 else 'sits'} in fairly-valued territory, "
+            "trading close enough to RIM value that the signal is neutral."
+        )
+
+    sentences.append(
+        "These signals are derived from a residual income model using historical ROE and book value; "
+        "they work best on capital-intensive companies with stable earnings and should be treated as "
+        "a directional screen rather than a price target."
+    )
+
+    return "  \n".join(sentences)
+
 PORTFOLIO_TICKERS = ["JPM", "BRK-B", "LMT", "WMB"]
 
 st.set_page_config(page_title="Residual Income Model (RIM)", layout="wide")
@@ -11,6 +56,8 @@ if "portfolio_results" not in st.session_state:
     st.session_state.portfolio_results = []
 if "portfolio_errors" not in st.session_state:
     st.session_state.portfolio_errors = []
+if "portfolio_analysis" not in st.session_state:
+    st.session_state.portfolio_analysis = ""
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -105,6 +152,15 @@ with tab_portfolio:
         with st.expander(f"{len(st.session_state.portfolio_errors)} ticker(s) failed to load"):
             for msg in st.session_state.portfolio_errors:
                 st.markdown(msg)
+
+    if st.session_state.portfolio_results:
+        st.divider()
+        st.subheader("Analysis")
+        if st.button("Generate Analysis"):
+            analysis = _generate_analysis(st.session_state.portfolio_results)
+            st.session_state.portfolio_analysis = analysis
+        if "portfolio_analysis" in st.session_state and st.session_state.portfolio_analysis:
+            st.info(st.session_state.portfolio_analysis)
 
 # ---------------------------------------------------------------------------
 # Tab 2: About RIM
