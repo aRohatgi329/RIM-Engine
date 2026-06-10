@@ -3,4 +3,6 @@ pandas
 numpy
 yfinance
 python-dotenv
+plotly
+requests
 # sqlite3 is part of Python's standard library — no install needed

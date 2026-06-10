@@ -48,9 +48,15 @@ def _generate_analysis(results: list) -> str:
 
     return "  \n".join(sentences)
 
+
 PORTFOLIO_TICKERS = ["JPM", "BRK-B", "LMT", "WMB"]
 
-st.set_page_config(page_title="Residual Income Model (RIM)", layout="wide")
+st.set_page_config(
+    page_title="Team Davis Investment Dashboard",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 if "portfolio_results" not in st.session_state:
     st.session_state.portfolio_results = []
@@ -80,21 +86,38 @@ def _style_mos(val: float) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------------------------
+
+st.sidebar.title("Team Davis")
+st.sidebar.markdown("---")
+
+page = st.sidebar.radio(
+    "Navigation",
+    ["📈 RIM Valuation", "📊 Earnings Analysis", "ℹ️ About RIM"],
+    label_visibility="collapsed",
+)
+
+st.sidebar.markdown("---")
+st.sidebar.caption("RIM Engine: JPM · BRK-B · LMT · WMB")
+st.sidebar.caption("Earnings: All 32 holdings")
+st.sidebar.caption("Data: FMP · yfinance")
+
+# ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
 
-st.title("Residual Income Model (RIM)")
-
-tab_portfolio, tab_about = st.tabs(["Portfolio", "About RIM"])
+st.title("Team Davis Investment Dashboard")
+st.caption("Quantitative Research Tools")
 
 # ---------------------------------------------------------------------------
-# Tab 1: Portfolio
+# Page: RIM Valuation
 # ---------------------------------------------------------------------------
 
-with tab_portfolio:
+if page == "📈 RIM Valuation":
     st.caption("Tickers: " + "  ·  ".join(PORTFOLIO_TICKERS))
 
-    if st.button("Run Portfolio Analysis"):
+    if st.button("Run RIM Valuation Analysis"):
         results, errors = [], []
         bar = st.progress(0, text="Starting...")
 
@@ -163,10 +186,21 @@ with tab_portfolio:
             st.info(st.session_state.portfolio_analysis)
 
 # ---------------------------------------------------------------------------
-# Tab 2: About RIM
+# Page: Earnings Analysis
 # ---------------------------------------------------------------------------
 
-with tab_about:
+elif page == "📊 Earnings Analysis":
+    try:
+        from tabs.earnings_tab import render_earnings_tab
+        render_earnings_tab()
+    except Exception as e:
+        st.error(f"Earnings tab error: {e}")
+
+# ---------------------------------------------------------------------------
+# Page: About RIM
+# ---------------------------------------------------------------------------
+
+elif page == "ℹ️ About RIM":
     st.header("What is the Residual Income Model?")
     st.markdown(
         """
