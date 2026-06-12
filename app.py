@@ -94,10 +94,12 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["📈 RIM Valuation", "📊 Earnings Analysis", "ℹ️ About RIM"],
+    ["📈 RIM Valuation", "📊 Earnings Analysis", "EV/Revenue Analysis", "📚 Learning"],
     label_visibility="collapsed",
 )
 
+st.sidebar.caption("JPM · BRK.B · LMT · WMB")
+st.sidebar.caption("XMTR · ONDS · ARWR")
 st.sidebar.markdown("---")
 st.sidebar.caption("RIM Engine: JPM · BRK-B · LMT · WMB")
 st.sidebar.caption("Earnings: All 32 holdings")
@@ -200,70 +202,10 @@ elif page == "📊 Earnings Analysis":
 # Page: About RIM
 # ---------------------------------------------------------------------------
 
-elif page == "ℹ️ About RIM":
-    st.header("What is the Residual Income Model?")
-    st.markdown(
-        """
-A stock is worth more than its book value only if it earns *more* than what investors
-require. The Residual Income Model (RIM) makes that idea precise: it values a company as
-its current book value per share *plus* the present value of all the "excess" returns it
-is expected to generate above its cost of equity.
+elif page == "EV/Revenue Analysis":
+    from tabs.ev_revenue_tab import render_ev_revenue_tab
+    render_ev_revenue_tab()
 
-If a company earns exactly its cost of equity every year, it is worth exactly book value —
-no more, no less. If it consistently earns above that hurdle, the surplus compounds and the
-intrinsic value climbs above book. If it earns below the hurdle, the stock is worth *less*
-than book.
-
----
-
-### The Formula
-
-$$
-\\text{RIM Value} = \\text{Book Value}_0 + \\sum_{t=1}^{T} \\frac{\\text{BV}_{t-1} \\times (\\text{ROE} - K_e)}{(1 + K_e)^t} + \\frac{\\text{Terminal Value}}{(1 + K_e)^T}
-$$
-
-In plain English:
-
-- **Book Value₀** — what shareholders have invested in the business today (equity per share)
-- **ROE − Kₑ** — the "excess return": how much the company earns above what equity investors require
-- **Kₑ (cost of equity)** — computed via CAPM: risk-free rate + beta × equity risk premium
-- **Terminal Value** — a perpetuity that captures excess returns beyond the 5-year forecast window
-- **Margin of Safety** — how far the current price is below (or above) the RIM Value
-
----
-
-### Signal Thresholds
-
-| Signal | Margin of Safety | Meaning |
-|--------|-----------------|---------|
-| 🟢 **BUY** | > 15% | Price is meaningfully below RIM Value |
-| 🟡 **HOLD** | 0 – 15% | Fairly valued; limited margin of safety |
-| 🔴 **SELL** | < 0% | Price exceeds RIM Value |
-
----
-
-### When RIM Works — and When It Doesn't
-
-**Works well on:**
-- Banks, insurers, and financials (book value is economically meaningful)
-- Mature industrials and consumer staples with stable, predictable ROE
-- Capital-intensive businesses where equity on the balance sheet reflects real earning power
-
-**Less reliable on:**
-- Early-stage or high-growth companies where current book value understates future earnings power
-- Asset-light businesses (software, platforms) where intangibles dominate value
-- Companies with highly volatile or negative earnings — ROE projections become unreliable
-- Firms that have aggressively bought back stock (book value can be near zero or negative)
-
----
-
-### Further Reading
-
-[Residual Income — Investopedia](https://www.investopedia.com/terms/r/residualincome.asp)
-
----
-
-*This tool is a directional valuation screen, not a price target or investment advice.*
-*Treat signals as a starting point for deeper research.*
-"""
-    )
+elif page == "📚 Learning":
+    from tabs.learning_tab import render_learning_tab
+    render_learning_tab()
