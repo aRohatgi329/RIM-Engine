@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import time
+import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -9,8 +10,7 @@ import yfinance as yf
 CACHE_TTL = 86400  # 24 hours
 DB_PATH = Path(__file__).parent.parent / "db" / "cache.db"
 
-# 10-year US Treasury yield (%). Update monthly.
-TREASURY_YIELD_10Y = 4.25
+_TREASURY_FALLBACK = 4.5
 
 # ---------------------------------------------------------------------------
 # yfinance → FMP-compatible field name mappings
@@ -221,8 +221,28 @@ def get_sector(ticker: str) -> str:
 
 
 def get_treasury_yield() -> float:
-    # 10-year US Treasury yield (%). Update monthly.
-    return TREASURY_YIELD_10Y
+    cache_key = "treasury-yield:DGS10"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return float(cached)
+
+    try:
+        url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            text = resp.read().decode("utf-8")
+        # Last non-empty row with a numeric value
+        value = None
+        for line in reversed(text.strip().splitlines()):
+            parts = line.split(",")
+            if len(parts) == 2 and parts[1].strip() not in ("", "."):
+                value = float(parts[1].strip())
+                break
+        if value is None:
+            raise ValueError("No valid DGS10 value found in FRED response")
+        _cache_set(cache_key, value)
+        return value
+    except Exception:
+        return _TREASURY_FALLBACK
 
 
 def get_all_financials(ticker: str, period: str = "annual", limit: int = 5) -> dict:

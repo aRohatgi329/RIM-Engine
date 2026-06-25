@@ -82,7 +82,7 @@ def render_earnings_tab() -> None:
         t = typed.strip()
         ticker = t.upper() if t else selected
 
-        run = st.button("Run Analysis", use_container_width=True, key="earnings_run_button")
+        run = st.button("Run Analysis", width='stretch', key="earnings_run_button")
         if run:
             with st.spinner("Fetching earnings data..."):
                 eps_data     = get_eps_surprise(ticker)
@@ -156,7 +156,7 @@ def render_earnings_tab() -> None:
             )
             fig.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
             fig.update_yaxes(tickprefix="$", tickformat=".2s")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         with col_e:
             fig = px.bar(
@@ -167,7 +167,7 @@ def render_earnings_tab() -> None:
             )
             fig.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
             fig.update_yaxes(tickprefix="$")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         with col_m:
             df_melted = df.melt(
@@ -192,7 +192,7 @@ def render_earnings_tab() -> None:
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
             fig.update_yaxes(ticksuffix="%")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
     except Exception as e:
         st.warning(f"Loading... please refresh if this persists. ({e})")

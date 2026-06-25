@@ -49,7 +49,7 @@ def _generate_analysis(results: list) -> str:
     return "  \n".join(sentences)
 
 
-PORTFOLIO_TICKERS = ["JPM", "BRK-B", "LMT", "WMB"]
+PORTFOLIO_TICKERS = ["JPM", "BRK-B"]
 
 st.set_page_config(
     page_title="Team Davis Investment Dashboard",
@@ -101,7 +101,7 @@ page = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.caption("RIM Engine: JPM · BRK-B · LMT · WMB")
+st.sidebar.caption("RIM Engine: JPM · BRK-B")
 st.sidebar.caption("Earnings: All 32 holdings")
 st.sidebar.caption("Data: FMP · yfinance")
 
@@ -119,7 +119,7 @@ st.caption("Quantitative Research Tools")
 if page == "📈 RIM Valuation":
     st.caption("Tickers: " + "  ·  ".join(PORTFOLIO_TICKERS))
 
-    if st.button("Run Analysis — JPM · BRK-B · LMT · WMB"):
+    if st.button("Run Analysis — JPM · BRK-B"):
         results, errors = [], []
         bar = st.progress(0, text="Starting...")
 
@@ -171,7 +171,7 @@ if page == "📈 RIM Valuation":
             })
         )
 
-        st.dataframe(styled, use_container_width=True, hide_index=True)
+        st.dataframe(styled, width='stretch', hide_index=True)
 
     if st.session_state.portfolio_errors:
         with st.expander(f"{len(st.session_state.portfolio_errors)} ticker(s) failed to load"):
