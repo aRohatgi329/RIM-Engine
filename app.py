@@ -64,6 +64,8 @@ if "portfolio_errors" not in st.session_state:
     st.session_state.portfolio_errors = []
 if "portfolio_analysis" not in st.session_state:
     st.session_state.portfolio_analysis = ""
+if "ev_revenue_results" not in st.session_state:
+    st.session_state.ev_revenue_results = {}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -94,12 +96,10 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["📈 RIM Valuation", "📊 Earnings Analysis", "EV/Revenue Analysis", "📚 Learning"],
+    ["📈 RIM Valuation", "EV/Revenue Analysis", "📊 Earnings Analysis", "📚 Learning"],
     label_visibility="collapsed",
 )
 
-st.sidebar.caption("JPM · BRK.B · LMT · WMB")
-st.sidebar.caption("XMTR · ONDS · ARWR")
 st.sidebar.markdown("---")
 st.sidebar.caption("RIM Engine: JPM · BRK-B · LMT · WMB")
 st.sidebar.caption("Earnings: All 32 holdings")
@@ -119,7 +119,7 @@ st.caption("Quantitative Research Tools")
 if page == "📈 RIM Valuation":
     st.caption("Tickers: " + "  ·  ".join(PORTFOLIO_TICKERS))
 
-    if st.button("Run RIM Valuation Analysis"):
+    if st.button("Run Analysis — JPM · BRK-B · LMT · WMB"):
         results, errors = [], []
         bar = st.progress(0, text="Starting...")
 
@@ -203,9 +203,15 @@ elif page == "📊 Earnings Analysis":
 # ---------------------------------------------------------------------------
 
 elif page == "EV/Revenue Analysis":
-    from tabs.ev_revenue_tab import render_ev_revenue_tab
-    render_ev_revenue_tab()
+    try:
+        from tabs.ev_revenue_tab import render_ev_revenue_tab
+        render_ev_revenue_tab()
+    except Exception as e:
+        st.error(f"EV/Revenue tab error: {e}")
 
 elif page == "📚 Learning":
-    from tabs.learning_tab import render_learning_tab
-    render_learning_tab()
+    try:
+        from tabs.learning_tab import render_learning_tab
+        render_learning_tab()
+    except Exception as e:
+        st.error(f"Learning tab error: {e}")

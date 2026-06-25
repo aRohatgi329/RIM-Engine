@@ -51,14 +51,17 @@ def render_ev_revenue_tab() -> None:
         if "ev_revenue_results" not in st.session_state:
             st.session_state.ev_revenue_results = {}
 
-        run = st.button("Run EV/Revenue Analysis — XMTR, ONDS, ARWR", use_container_width=True, key="ev_revenue_run_button")
+        run = st.button("Run Analysis — XMTR · ONDS · ARWR", use_container_width=True, key="ev_revenue_run_button")
         if run:
             with st.spinner("Fetching EV/Revenue data..."):
                 for ticker in EV_REVENUE_TICKERS:
                     st.session_state.ev_revenue_results[ticker] = run_ev_revenue(ticker)
 
         results = st.session_state.ev_revenue_results
+        if not results:
+            return
         if not any(v is not None for v in results.values()):
+            st.warning("All data fetches failed — check your connection and retry.")
             return
 
         cols = st.columns(len(EV_REVENUE_TICKERS))

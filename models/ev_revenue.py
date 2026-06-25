@@ -9,14 +9,14 @@ from data.fmp import _cache_set, _db
 CACHE_TTL = 86400  # 24 hours
 _SENTINEL = False
 
-EV_REVENUE_TICKERS = ["ARWR", "ONDS", "XMTR"]
-
 # Hardcoded sector EV/Revenue medians for peer comparison
 _SECTOR_MEDIANS = {
     "XMTR": 9.56,
     "ONDS": 3.57,
     "ARWR": 7.92,
 }
+
+EV_REVENUE_TICKERS = list(_SECTOR_MEDIANS)
 
 OVERVALUED_THRESHOLD = 1.25
 UNDERVALUED_THRESHOLD = 0.80
@@ -94,9 +94,12 @@ def run_ev_revenue(ticker: str) -> Optional[dict]:
             return None
 
         cols = list(qis.columns)[:4]
+        if len(cols) < 4:
+            # Partial data (e.g. recently listed): do not cache, let next call retry
+            return None
         ttm_revenue = sum(_safe_float(qis.loc["Total Revenue", c]) for c in cols)
         if ttm_revenue == 0:
-            _cache_set(cache_key, _SENTINEL)
+            # Do not cache: zero may be a transient NaN outage, not stable "no data"
             return None
 
         ev = mkt_cap + total_debt - cash

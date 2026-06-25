@@ -72,6 +72,13 @@ Uses the stable endpoint: `https://financialmodelingprep.com/stable`. The free t
 
 `data/financials.py` uses `_get_income_statements(ticker)` as a shared fetcher (cache key `fmp-income-stmt:{ticker}`) so `get_key_stats` and `get_chart_data` hit the API only once per TTL window. However, `get_eps_surprise` (`data/earnings.py`) and `get_revenue_surprise` (`data/financials.py`) each hit `/earnings` independently under separate cache keys.
 
+## Code Review Priorities
+
+- **Cache sentinel pattern correctness** — `None` = cache miss (retry), `False` = stable "no data" (skip API), `dict` = valid hit. Transient errors must never write `_SENTINEL`.
+- **Lazy imports in `app.py` elif branches only** — tab modules (`render_*`) are imported inside their `elif` block, never at the top of `app.py`. An eager top-level import crashes all pages if that module fails.
+- **Signal logic correctness in `models/`** — thresholds must match the spec in this file. Check boundary conditions (e.g. `>` vs `>=`) and that edge cases (negative EV, zero revenue) return a defined signal rather than a computed nonsense value.
+- **New features go in new files only** — do not modify `data/fmp.py`, `models/rim.py`, `tabs/earnings_tab.py`, or other existing files when adding features unless explicitly instructed.
+
 ## Known dead code
 
 `tabs/earnings_tab.py` contains `_quarter_caption()` and `_QUARTER_END` — both are unused (no call sites after the "Most Recent Quarter" caption was removed).
