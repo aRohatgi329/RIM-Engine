@@ -622,18 +622,29 @@ def _margin_of_safety_pct(intrinsic_value_per_share: float, current_price: float
     return (intrinsic_value_per_share - current_price) / current_price * 100
 
 
-def _project_from_growth(inputs: dict, start_growth_pct: float) -> dict:
+def _project_from_growth(
+    inputs: dict, start_growth_pct: float, wacc_pct: float = None, terminal_growth_pct: float = None
+) -> dict:
     """Runs the taper -> terminal value -> discount -> intrinsic-value pipeline
     for a single starting-growth-rate assumption. Shared by both the old
     (single-year) and new (smoothed) bases so they run through an identical
-    pipeline and are only ever different in the one input being compared."""
-    last_actual_fcf = inputs["fcf_years"][0]["fcf"]  # most-recent-first
-    wacc_pct = inputs["wacc"]["wacc_pct"]
+    pipeline and are only ever different in the one input being compared.
 
-    taper = _taper_schedule(start_growth_pct, TERMINAL_GROWTH_PCT, PROJECTION_YEARS)
+    wacc_pct and terminal_growth_pct default to the base-case values (the
+    computed WACC and the module's TERMINAL_GROWTH_PCT) so every existing call
+    site is unaffected; Phase 3's sensitivity grid overrides them per-cell to
+    reuse this exact pipeline instead of duplicating the terminal-value/
+    discounting math."""
+    last_actual_fcf = inputs["fcf_years"][0]["fcf"]  # most-recent-first
+    if wacc_pct is None:
+        wacc_pct = inputs["wacc"]["wacc_pct"]
+    if terminal_growth_pct is None:
+        terminal_growth_pct = TERMINAL_GROWTH_PCT
+
+    taper = _taper_schedule(start_growth_pct, terminal_growth_pct, PROJECTION_YEARS)
     projected_fcf = _project_fcf(last_actual_fcf, taper)
 
-    tv, tv_error = _terminal_value(projected_fcf[-1]["fcf"], wacc_pct, TERMINAL_GROWTH_PCT)
+    tv, tv_error = _terminal_value(projected_fcf[-1]["fcf"], wacc_pct, terminal_growth_pct)
     if tv is None:
         return {
             "status": "PROJECTION_FAILED", "reason": tv_error,
@@ -731,6 +742,92 @@ def compute_dcf_projection(inputs: dict) -> dict:
         result["old_basis"] = _project_from_growth(inputs, single_year_growth_pct)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: WACC x terminal-growth sensitivity grid
+#
+# Built entirely on top of Phase 2's _project_from_growth (now generalized to
+# accept wacc_pct/terminal_growth_pct overrides, defaulting to the base case so
+# every existing Phase 2 call site is unchanged). No terminal-value or
+# discounting math is reimplemented here — every grid cell reruns the same
+# pipeline Phase 2 already uses, just at a different WACC/terminal-growth pair,
+# including the base-case cell itself (offset 0.0/0.0), so it can be diffed
+# against Phase 2's own point estimate as a sanity check instead of assumed
+# consistent.
+# ---------------------------------------------------------------------------
+
+WACC_SENSITIVITY_STEPS_PCT = [-3.0, -1.5, 0.0, 1.5, 3.0]
+TERMINAL_GROWTH_SENSITIVITY_STEPS_PCT = [-2.0, -1.0, 0.0, 1.0, 2.0]
+
+
+def compute_sensitivity_grid(inputs: dict, projection: dict) -> dict:
+    """WACC (rows) x terminal growth (columns) grid of intrinsic value/share.
+
+    Callers must check projection['start_growth_pct'] is not None (i.e. the
+    Phase 2 projection succeeded) before calling this. start_growth_pct — the
+    taper's starting point — is held fixed at Phase 2's already-chosen value
+    for every cell; only WACC and terminal growth vary, per the requested grid
+    axes. The base case (offset 0.0/0.0) is included as an ordinary cell, not
+    special-cased, so it runs through _project_from_growth exactly like every
+    other cell."""
+    base_wacc_pct = inputs["wacc"]["wacc_pct"]
+    base_terminal_growth_pct = projection["terminal_growth_pct"]
+    start_growth_pct = projection["start_growth_pct"]
+
+    wacc_values = [base_wacc_pct + step for step in WACC_SENSITIVITY_STEPS_PCT]
+    terminal_growth_values = [
+        base_terminal_growth_pct + step for step in TERMINAL_GROWTH_SENSITIVITY_STEPS_PCT
+    ]
+
+    rows = []
+    for wacc_pct in wacc_values:
+        row = []
+        for tg_pct in terminal_growth_values:
+            # _project_from_growth -> _terminal_value already guards WACC <= terminal
+            # growth (returns intrinsic_value_per_share=None with a reason instead of
+            # dividing by a non-positive spread); reused as-is, not reimplemented, so
+            # a grid cell can never silently produce a nonsense value in a case where
+            # Phase 2 itself would have failed.
+            cell_result = _project_from_growth(inputs, start_growth_pct, wacc_pct, tg_pct)
+            row.append({
+                "wacc_pct": wacc_pct,
+                "terminal_growth_pct": tg_pct,
+                "intrinsic_value_per_share": cell_result["intrinsic_value_per_share"],
+                # Exact-float comparison is safe here: wacc_values/terminal_growth_values
+                # are built as base + step, and the base-case step is exactly 0.0, so
+                # adding it reproduces the original float bit-for-bit.
+                "is_base_case": wacc_pct == base_wacc_pct and tg_pct == base_terminal_growth_pct,
+                "error": cell_result["reason"] if cell_result["intrinsic_value_per_share"] is None else "",
+            })
+        rows.append(row)
+
+    return {
+        "wacc_values": wacc_values,
+        "terminal_growth_values": terminal_growth_values,
+        "rows": rows,
+        "base_wacc_pct": base_wacc_pct,
+        "base_terminal_growth_pct": base_terminal_growth_pct,
+    }
+
+
+def _print_sensitivity_grid(grid: dict) -> None:
+    col_w = 11
+    header_cells = "".join(f"{tg:>{col_w}.2f}%" for tg in grid["terminal_growth_values"])
+    row_label = "WACC / TermG"
+    print(f"  {row_label:<15}{header_cells}")
+    for wacc_pct, row in zip(grid["wacc_values"], grid["rows"]):
+        cells = []
+        for cell in row:
+            if cell["intrinsic_value_per_share"] is None:
+                val_str = "N/A"
+            else:
+                val_str = f"{cell['intrinsic_value_per_share']:,.2f}"
+            if cell["is_base_case"]:
+                val_str += "*"
+            cells.append(f"{val_str:>{col_w + 1}}")
+        print(f"  {wacc_pct:>11.2f}%   " + "".join(cells))
+    print("  (* = base-case assumptions — matches Phase 2's point-estimate intrinsic value/share)")
 
 
 def run_dcf_valuation(ticker: str) -> dict:
@@ -853,6 +950,10 @@ def run_dcf_valuation(ticker: str) -> dict:
           f"{' [capped]' if projection['growth_rate_capped'] else ''}): "
           f"Intrinsic Value/Share = {projection['intrinsic_value_per_share']:,.2f}")
 
+    print("\n--- 10. SENSITIVITY GRID: INTRINSIC VALUE/SHARE (WACC x Terminal Growth) ---")
+    grid = compute_sensitivity_grid(inputs, projection)
+    _print_sensitivity_grid(grid)
+
     mos_pct = _margin_of_safety_pct(projection["intrinsic_value_per_share"], inputs["current_price"])
 
     print(f"\n{'=' * 72}")
@@ -863,7 +964,7 @@ def run_dcf_valuation(ticker: str) -> dict:
     print(f"  Margin of Safety:        {mos_pct:+.1f}%  ({'undervalued' if mos_pct > 0 else 'overvalued'})")
     print(f"{'=' * 72}\n")
 
-    return {**inputs, **projection, "margin_of_safety_pct": mos_pct}
+    return {**inputs, **projection, "margin_of_safety_pct": mos_pct, "sensitivity_grid": grid}
 
 
 if __name__ == "__main__":
