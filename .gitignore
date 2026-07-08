@@ -3,3 +3,5 @@ db/cache.db
 __pycache__/
 .DS_Store
 .streamlit/secrets.toml
+cache.db
+db/*.db

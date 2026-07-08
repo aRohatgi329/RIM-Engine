@@ -31,6 +31,21 @@ _SENTINEL = False
 
 REQUIRED_HISTORY_YEARS = 5
 
+# Large-cap tickers with a long, stable FCF history — the set the Phase 4 DCF
+# tab offers for selection. Not every ticker here is guaranteed to pass the
+# Phase 1 data-quality gate; the tab is responsible for checking gate_status
+# per ticker and excluding failures rather than assuming this list is pre-filtered.
+DCF_TICKERS = [
+    "AAPL", "COST", "GE", "GOOGL", "LMT", "META", "MSFT", "NVDA", "V", "WMT"
+]
+
+# Tickers whose FMP statement endpoints return HTTP 402 ("Premium Query
+# Parameter") on the current free-tier plan — a subscription-tier paywall, not
+# a genuine data-quality gate failure (confirmed: no 429/rate-limit involved).
+# Excluded from DCF_TICKERS so the selector doesn't dead-end on them; listed
+# here purely so the tab can footnote them for transparency.
+DCF_TICKERS_PENDING_PAID_TIER = ["CAT", "HD", "LLY", "LOW", "MELI", "NOC", "ORCL"]
+
 # Used only when this module's own live FRED (DGS10) fetch fails; the source
 # label then reflects the fallback so it's never mistaken for a live rate.
 # Reuses data.fmp's _TREASURY_FALLBACK (the same 10-yr Treasury fallback that
@@ -537,17 +552,27 @@ def _smoothed_growth_rate_pct(fcf_years: list, lookback: int = SMOOTHING_LOOKBAC
 
 
 STARTING_GROWTH_CEILING_PCT = 40.0
-# Sanity cap: an implausibly high smoothed starting growth rate is far more
-# likely a data/base-year artifact than a sustainable 5-year trend. Rather than
-# silently feeding it into the taper, cap it and flag the raw figure for manual
-# review.
+STARTING_GROWTH_FLOOR_PCT = 0.0
+# Sanity bounds: an implausibly high smoothed starting growth rate is far more
+# likely a data/base-year artifact than a sustainable 5-year trend, so it's
+# capped. Symmetrically, a negative smoothed rate would taper the projection
+# down from a shrinking base — the model's growing-company assumptions (single
+# taper toward a positive terminal growth rate) don't hold below 0%, so it's
+# floored instead. Either way the raw figure is flagged for manual review
+# rather than silently fed into the taper.
 
 
-def _apply_growth_ceiling(start_growth_pct: float, ceiling_pct: float = STARTING_GROWTH_CEILING_PCT):
-    """Returns (growth_pct_to_use, was_capped)."""
+def _apply_growth_bounds(
+    start_growth_pct: float,
+    floor_pct: float = STARTING_GROWTH_FLOOR_PCT,
+    ceiling_pct: float = STARTING_GROWTH_CEILING_PCT,
+):
+    """Returns (growth_pct_to_use, was_capped, was_floored)."""
     if start_growth_pct > ceiling_pct:
-        return ceiling_pct, True
-    return start_growth_pct, False
+        return ceiling_pct, True, False
+    if start_growth_pct < floor_pct:
+        return floor_pct, False, True
+    return start_growth_pct, False, False
 
 
 def _taper_schedule(start_growth_pct: float, terminal_growth_pct: float, n: int) -> list:
@@ -676,10 +701,12 @@ def compute_dcf_projection(inputs: dict) -> dict:
     The taper's starting growth rate is the smoothed 3-year FCF CAGR
     (_smoothed_growth_rate_pct), not the single most-recent YoY figure — one
     unusually strong/weak year shouldn't set the trajectory for the whole 5-year
-    projection. If that smoothed figure is implausibly high it's capped
-    (_apply_growth_ceiling) rather than fed straight into the taper. The old
-    single-year basis is still computed and run through the same pipeline purely
-    so the two can be printed and compared side by side."""
+    projection. That smoothed figure is clamped to [STARTING_GROWTH_FLOOR_PCT,
+    STARTING_GROWTH_CEILING_PCT] (_apply_growth_bounds) rather than fed straight
+    into the taper — implausibly high, and negative, raw figures are both more
+    likely a base-year artifact than a trend to project 5 years forward on. The
+    old single-year basis is still computed and run through the same pipeline
+    purely so the two can be printed and compared side by side."""
     single_year_growth_pct = _starting_growth_rate_pct(inputs["growth"])
     smoothed_growth_pct_raw = _smoothed_growth_rate_pct(inputs["fcf_years"])
 
@@ -690,6 +717,7 @@ def compute_dcf_projection(inputs: dict) -> dict:
         "smoothed_growth_pct_raw": smoothed_growth_pct_raw,
         "start_growth_pct": None,
         "growth_rate_capped": False,
+        "growth_rate_floored": False,
         "terminal_growth_pct": TERMINAL_GROWTH_PCT,
         "projected_fcf": None,
         "terminal_value": None,
@@ -700,20 +728,19 @@ def compute_dcf_projection(inputs: dict) -> dict:
     }
 
     # Pick the starting growth rate that drives the taper.
-    #  - Normal path: the smoothed 3-yr FCF CAGR, capped if implausibly high.
-    #    (growth_rate_capped can therefore only be True when the raw CAGR is a
-    #    real number, which keeps the section-5 "capped" print — which formats
-    #    smoothed_growth_pct_raw — from ever formatting a None.)
+    #  - Normal path: the smoothed 3-yr FCF CAGR, clamped to [floor, ceiling] —
+    #    capped if implausibly high, floored (to 0%) if negative.
     #  - Fallback: when the smoothed CAGR is undefined (a non-positive FCF
     #    endpoint in the 3-yr window), fall back to the single-year YoY figure,
-    #    but only if it is itself defined AND within the sanity ceiling.
+    #    clamped the same way, but only used at all if it is itself defined AND
+    #    within the sanity ceiling.
     #  - Otherwise there is no trustworthy basis (no smoothed trend, and the
     #    fallback is missing or itself implausibly high) — fail cleanly instead
     #    of projecting off a number we don't trust (or crashing on the print).
     if smoothed_growth_pct_raw is not None:
-        start_growth_pct, growth_rate_capped = _apply_growth_ceiling(smoothed_growth_pct_raw)
+        start_growth_pct, growth_rate_capped, growth_rate_floored = _apply_growth_bounds(smoothed_growth_pct_raw)
     elif single_year_growth_pct is not None and single_year_growth_pct <= STARTING_GROWTH_CEILING_PCT:
-        start_growth_pct, growth_rate_capped = single_year_growth_pct, False
+        start_growth_pct, growth_rate_capped, growth_rate_floored = _apply_growth_bounds(single_year_growth_pct)
     else:
         result["projection_status"] = "PROJECTION_FAILED"
         result["projection_reason"] = (
@@ -727,6 +754,7 @@ def compute_dcf_projection(inputs: dict) -> dict:
 
     result["start_growth_pct"] = start_growth_pct
     result["growth_rate_capped"] = growth_rate_capped
+    result["growth_rate_floored"] = growth_rate_floored
 
     primary = _project_from_growth(inputs, start_growth_pct)
     result["projected_fcf"] = primary["projected_fcf"]
@@ -903,7 +931,16 @@ def run_dcf_valuation(ticker: str) -> dict:
         print(f"  ⚠ SANITY CAP: starting growth rate unusually high, review manually.")
         print(f"    Raw {SMOOTHING_LOOKBACK_YEARS}-yr FCF CAGR ({smoothed_g_raw:.2f}%) exceeds the "
               f"{STARTING_GROWTH_CEILING_PCT:.2f}% ceiling — capped for the taper.")
-    print(f"  New basis  — used in taper (after cap):             "
+    if projection["growth_rate_floored"]:
+        raw_pct = smoothed_g_raw if smoothed_g_raw is not None else old_g
+        raw_label = (
+            f"{SMOOTHING_LOOKBACK_YEARS}-yr FCF CAGR" if smoothed_g_raw is not None
+            else "single-year YoY growth (fallback basis)"
+        )
+        print(f"  ⚠ SANITY FLOOR: starting growth rate negative, review manually.")
+        print(f"    Raw {raw_label} ({raw_pct:.2f}%) is below the "
+              f"{STARTING_GROWTH_FLOOR_PCT:.2f}% floor — floored for the taper.")
+    print(f"  New basis  — used in taper (after cap/floor):       "
           f"{f'{used_g:.2f}%' if used_g is not None else 'N/A'}")
     print(f"  Terminal growth rate:                               {TERMINAL_GROWTH_PCT:.2f}%")
     if projection["projected_fcf"] is None:
@@ -946,8 +983,13 @@ def run_dcf_valuation(ticker: str) -> dict:
     old_iv = old_basis["intrinsic_value_per_share"] if old_basis else None
     print(f"  Old basis  (start growth {f'{old_g:.2f}%' if old_g is not None else 'N/A':>7}): "
           f"Intrinsic Value/Share = {f'{old_iv:,.2f}' if old_iv is not None else 'N/A'}")
+    bound_suffix = (
+        " [capped]" if projection["growth_rate_capped"]
+        else " [floored]" if projection["growth_rate_floored"]
+        else ""
+    )
     print(f"  New basis  (start growth {f'{used_g:.2f}%' if used_g is not None else 'N/A':>7}"
-          f"{' [capped]' if projection['growth_rate_capped'] else ''}): "
+          f"{bound_suffix}): "
           f"Intrinsic Value/Share = {projection['intrinsic_value_per_share']:,.2f}")
 
     print("\n--- 10. SENSITIVITY GRID: INTRINSIC VALUE/SHARE (WACC x Terminal Growth) ---")

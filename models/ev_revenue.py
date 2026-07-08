@@ -5,6 +5,7 @@ from typing import Optional
 import yfinance as yf
 
 from data.fmp import _cache_set, _db
+from models.utils import _safe_float
 
 CACHE_TTL = 86400  # 24 hours
 _SENTINEL = False
@@ -43,14 +44,6 @@ def _cache_hit(cached) -> bool:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _safe_float(val, default: float = 0.0) -> float:
-    try:
-        f = float(val)
-        return default if (f != f) else f  # NaN check: NaN != NaN
-    except (TypeError, ValueError):
-        return default
-
 
 def _signal(ratio: float, median: float) -> str:
     ratio_vs = ratio / median

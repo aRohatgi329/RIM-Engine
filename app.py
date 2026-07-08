@@ -96,7 +96,7 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["📈 RIM Valuation", "EV/Revenue Analysis", "📊 Earnings Analysis", "📚 Learning"],
+    ["📈 RIM Valuation", "EV/Revenue Analysis", "DCF Valuation", "📊 Earnings Analysis", "📚 Learning"],
     label_visibility="collapsed",
 )
 
@@ -208,6 +208,13 @@ elif page == "EV/Revenue Analysis":
         render_ev_revenue_tab()
     except Exception as e:
         st.error(f"EV/Revenue tab error: {e}")
+
+elif page == "DCF Valuation":
+    try:
+        from tabs.dcf_tab import render_dcf_tab
+        render_dcf_tab()
+    except Exception as e:
+        st.error(f"DCF tab error: {e}")
 
 elif page == "📚 Learning":
     try:
