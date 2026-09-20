@@ -220,11 +220,21 @@ def get_sector(ticker: str) -> str:
     return sector
 
 
-def get_treasury_yield() -> float:
+def get_treasury_yield() -> tuple[float, str]:
+    """Return the 10-year Treasury yield (FRED DGS10) and a source label.
+
+    The label is what distinguishes a live rate from the fallback: the bare
+    float is identical either way, so a caller comparing it against
+    _TREASURY_FALLBACK would misread a genuine 4.5% print as a failed fetch.
+    Label format matches models/dcf.py's own risk-free-rate source strings.
+
+    A cache hit is always a prior successful live fetch, since the except
+    branch below returns without caching.
+    """
     cache_key = "treasury-yield:DGS10"
     cached = _cache_get(cache_key)
     if cached is not None:
-        return float(cached)
+        return float(cached), "live (FRED DGS10)"
 
     try:
         url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10"
@@ -240,9 +250,9 @@ def get_treasury_yield() -> float:
         if value is None:
             raise ValueError("No valid DGS10 value found in FRED response")
         _cache_set(cache_key, value)
-        return value
+        return value, "live (FRED DGS10)"
     except Exception:
-        return _TREASURY_FALLBACK
+        return _TREASURY_FALLBACK, f"fallback ({_TREASURY_FALLBACK}% — live FRED fetch failed)"
 
 
 def get_all_financials(ticker: str, period: str = "annual", limit: int = 5) -> dict:

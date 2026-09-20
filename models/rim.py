@@ -133,7 +133,8 @@ def run_rim(ticker: str) -> dict:
     """
     ticker = ticker.upper().strip()
 
-    rf = get_treasury_yield() / 100
+    rf_pct, rf_source = get_treasury_yield()
+    rf = rf_pct / 100
     financials = get_all_financials(ticker, period="annual", limit=5)
 
     profile = financials["profile"]
@@ -181,5 +182,6 @@ def run_rim(ticker: str) -> dict:
         "avg_roe": avg_roe * 100,
         "book_value_per_share": bv0,
         "risk_free_rate": rf * 100,
+        "risk_free_rate_source": rf_source,
         "beta": beta,
     }
