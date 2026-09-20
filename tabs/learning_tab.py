@@ -3,6 +3,7 @@ import streamlit as st
 
 def render_learning_tab() -> None:
     st.title("Learning")
+    st.caption("This page's content is AI-generated.")
 
     tab_rim, tab_evr, tab_earn = st.tabs(
         ["Residual Income Model (RIM)", "EV / Revenue (EV/R)", "Earnings Analysis"]
@@ -109,7 +110,7 @@ negative or meaningless, so EV/R is the right tool.
 
 ### Limitation
 
-It ignores operating expenses entirely. A company with $1B revenue and $2B in costs looks
+It ignores operating expenses entirely. A company with \\$1B revenue and \\$2B in costs looks
 the same as one that's profitable. Always pair with other metrics.
 
 ---
