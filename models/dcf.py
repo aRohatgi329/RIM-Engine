@@ -1,9 +1,22 @@
-"""Phase 1 DCF diagnostics.
+"""DCF valuation: inputs, projection, and sensitivity.
 
-Computes and prints every raw input a DCF valuation needs — historical FCF,
-the data quality gate, FCF growth, and WACC — with no discounting, terminal
-value, or intrinsic value math. Inputs only, so each number can be checked
-before valuation logic is built on top.
+Phase 1 (compute_dcf_inputs / run_dcf_diagnostics) computes every raw input a
+DCF valuation needs — historical FCF, the data quality gate, FCF growth, and
+WACC — so each number can be checked on its own before valuation logic is built
+on top of it.
+
+Phase 2 (compute_dcf_projection) builds on those inputs and does the valuation
+math: a 5-year FCF projection whose growth rate tapers from a smoothed 3-year
+FCF CAGR down to the terminal rate, a perpetuity terminal value, discounting of
+both back to present value at WACC, an enterprise value, and an intrinsic value
+per share.
+
+Phase 3 (compute_sensitivity_grid) reruns that same Phase 2 pipeline across a
+WACC x terminal-growth grid, reporting intrinsic value per share in each cell.
+
+run_dcf_valuation prints all three phases in one pass, holding current price and
+margin of safety back to a final, separate section so the assumptions can be
+judged before they are compared against the market.
 
 Historical statements come from the real FMP REST API (financialmodelingprep.com),
 not the yfinance-backed data/fmp.py module: yfinance's free annual statements cap
@@ -739,6 +752,17 @@ def compute_dcf_projection(inputs: dict) -> dict:
     #    of projecting off a number we don't trust (or crashing on the print).
     if smoothed_growth_pct_raw is not None:
         start_growth_pct, growth_rate_capped, growth_rate_floored = _apply_growth_bounds(smoothed_growth_pct_raw)
+    # UNREACHABLE (as of today) — both branches below are dead on every live path.
+    # compute_dcf_projection only runs once the Phase 1 data-quality gate has
+    # passed (enforced by the GATE_PASSED checks in run_dcf_valuation and in
+    # tabs/dcf_tab.py::_compute_dcf_result), and _data_quality_gate already
+    # rejects any year whose fcf is None or <= 0, as well as any ticker with
+    # fewer than REQUIRED_HISTORY_YEARS (5) years of history. Since
+    # SMOOTHING_LOOKBACK_YEARS (3) <= 5, _smoothed_growth_rate_pct always gets a
+    # full window with two strictly positive endpoints, so it cannot return None
+    # here and smoothed_growth_pct_raw is never None. Retained as defensive code
+    # in case the gate is ever loosened — e.g. a shorter history requirement, or
+    # admitting non-positive/missing FCF years.
     elif single_year_growth_pct is not None and single_year_growth_pct <= STARTING_GROWTH_CEILING_PCT:
         start_growth_pct, growth_rate_capped, growth_rate_floored = _apply_growth_bounds(single_year_growth_pct)
     else:
@@ -859,13 +883,14 @@ def _print_sensitivity_grid(grid: dict) -> None:
 
 
 def run_dcf_valuation(ticker: str) -> dict:
-    """Phase 1 + Phase 2, printed in one pass. Historical FCF, the data-quality
-    gate, historical growth, and WACC print first (all Phase 1, via
+    """Phase 1 + Phase 2 + Phase 3, printed in one pass. Historical FCF, the
+    data-quality gate, historical growth, and WACC print first (all Phase 1, via
     compute_dcf_inputs — no Phase 1 print or logic reused/altered from
     run_dcf_diagnostics). If the gate fails, printing stops there — no
     projection math runs. If it passes, every projection assumption prints
-    next. Current price and margin of safety are held back until a final,
-    separate, clearly-labeled section at the very end."""
+    next (Phase 2, sections 5-9), followed by the Phase 3 WACC x terminal-growth
+    sensitivity grid as section 10. Current price and margin of safety are held
+    back until a final, separate, clearly-labeled section at the very end."""
     inputs = compute_dcf_inputs(ticker)
 
     print(f"\n{'=' * 72}")

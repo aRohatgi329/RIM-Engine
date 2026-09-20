@@ -93,7 +93,7 @@ Uses the stable endpoint: `https://financialmodelingprep.com/stable`. The free t
 - **Cache sentinel pattern correctness** — `None` = cache miss (retry), `False` = stable "no data" (skip API), `dict` = valid hit. Transient errors must never write `_SENTINEL`.
 - **Lazy imports in `app.py` elif branches only** — tab modules (`render_*`) are imported inside their `elif` block, never at the top of `app.py`. An eager top-level import crashes all pages if that module fails.
 - **Signal logic correctness in `models/`** — RIM thresholds: BUY ≥ 15% MoS, SELL < 0%. EV/Revenue thresholds: UNDERVALUED < 0.80× median, OVERVALUED > 1.25×. Check boundary conditions (`>` vs `>=`) and that edge cases (negative EV, zero revenue) return a defined signal rather than a computed nonsense value.
-- **New features go in new files only** — do not modify `data/fmp.py`, `models/rim.py`, `tabs/earnings_tab.py`, or other existing files when adding features unless explicitly instructed.
+- **New features go in new files only** — do not modify `data/fmp.py`, `models/rim.py`, `tabs/earnings_tab.py`, or other existing files when adding features unless explicitly instructed. **Active exception (branch `docs-cleanup` only): comments and docstrings in `models/dcf.py` may be edited directly. No executable code, no other file. Remove this exception on merge.**
 
 ## Known dead code
 
