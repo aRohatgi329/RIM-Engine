@@ -66,7 +66,7 @@ DCF_TICKERS_PENDING_PAID_TIER = ["CAT", "HD", "LLY", "LOW", "MELI", "NOC", "ORCL
 # can't silently diverge on the fallback rate when FRED is unreachable.
 RF_FALLBACK = _TREASURY_FALLBACK
 
-MARKET_PREMIUM = EQUITY_RISK_PREMIUM  # reuse rim.py's 5.5% for consistency with the RIM model
+MARKET_PREMIUM = EQUITY_RISK_PREMIUM  # reuse rim.py's premium for consistency with the RIM model
 
 
 # ---------------------------------------------------------------------------
@@ -657,7 +657,12 @@ def _intrinsic_value_per_share(enterprise_value: float, net_debt: float, shares_
 
 
 def _margin_of_safety_pct(intrinsic_value_per_share: float, current_price: float) -> float:
-    return (intrinsic_value_per_share - current_price) / current_price * 100
+    """Denominator is intrinsic value, not price — matching rim.py's margin-of-safety
+    formula so the two models' MoS figures mean the same thing and are directly
+    comparable. Ports rim.py's guard exactly: a zero intrinsic value returns 0.0
+    rather than raising ZeroDivisionError."""
+    iv = intrinsic_value_per_share
+    return ((iv - current_price) / iv * 100) if iv != 0 else 0.0
 
 
 def _project_from_growth(
@@ -1028,7 +1033,12 @@ def run_dcf_valuation(ticker: str) -> dict:
     print(f"{'=' * 72}")
     print(f"  Current Price:           {inputs['current_price']:,.2f}")
     print(f"  Intrinsic Value/Share:   {projection['intrinsic_value_per_share']:,.2f}")
-    print(f"  Margin of Safety:        {mos_pct:+.1f}%  ({'undervalued' if mos_pct > 0 else 'overvalued'})")
+    # Label compares intrinsic value against price directly rather than reading the
+    # sign of mos_pct: with intrinsic value in the denominator, a negative intrinsic
+    # value flips the ratio's sign and would otherwise print "undervalued".
+    iv_ps = projection["intrinsic_value_per_share"]
+    price = inputs["current_price"]
+    print(f"  Margin of Safety:        {mos_pct:+.1f}%  ({'undervalued' if iv_ps > price else 'overvalued'})")
     print(f"{'=' * 72}\n")
 
     return {**inputs, **projection, "margin_of_safety_pct": mos_pct, "sensitivity_grid": grid}
