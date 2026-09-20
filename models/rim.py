@@ -2,7 +2,11 @@ from statistics import mean
 
 from data.fmp import get_all_financials, get_treasury_yield
 
-EQUITY_RISK_PREMIUM = 0.055
+# Equity risk premium: Damodaran implied ERP, 4.23% (January 2026).
+# Solved against the spot 10-year Treasury, matching the FRED DGS10
+# rate this model fetches. Refresh annually each January.
+# Imported by models/dcf.py as MARKET_PREMIUM.
+EQUITY_RISK_PREMIUM = 0.0423
 TERMINAL_GROWTH = 0.03
 PROJECTION_YEARS = 5
 FINANCIAL_SECTORS = {"Financial Services", "Banking", "Insurance",
