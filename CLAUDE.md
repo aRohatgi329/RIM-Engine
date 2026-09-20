@@ -50,9 +50,11 @@ All FMP API calls read `st.secrets["FMP_KEY"]`. Note: `config.py` reads `FMP_API
 
 ### RIM model
 
-`models/rim.py` → `run_rim(ticker)` pulls 5 years of annual financials from `data.fmp`, computes CAPM cost of equity, projects residual income for 5 years + terminal value, and returns a signal dict with `intrinsic_value`, `margin_of_safety_pct`, and `signal` (BUY ≥ 15% MoS, SELL < 0%, HOLD otherwise).
+`models/rim.py` → `run_rim(ticker)` pulls 5 years of annual financials from `data.fmp`, computes CAPM cost of equity, projects residual income for 5 years + terminal value, and returns a signal dict with `intrinsic_value`, `margin_of_safety_pct`, and `signal` (BUY ≥ 15% MoS, SELL ≤ −15% MoS, HOLD in between). Thresholds live in `MOS_BUY_THRESHOLD = 15.0` and `MOS_SELL_THRESHOLD = -15.0`.
 
-`data/fmp.py` fetches the 10-year treasury yield dynamically via `get_treasury_yield()` and falls back to `_TREASURY_FALLBACK = 4.5` on error. Update that constant when the rate shifts materially.
+Margin of safety uses **intrinsic value as the denominator** — `(iv − price) / iv` — in both this model and `models/dcf.py`, guarded to return `0.0` when `iv == 0`. Note this is not the price-denominated convention; a figure here is not comparable to one computed against price.
+
+`data/fmp.py` fetches the 10-year treasury yield dynamically via `get_treasury_yield()`, which returns `tuple[float, str]` — the rate plus a source label that distinguishes a live FRED (DGS10) fetch from the fallback. On error it returns `_TREASURY_FALLBACK = 4.5` labelled as a fallback; update that constant when the rate shifts materially. The label exists because the bare float is identical either way, so comparing the value against `_TREASURY_FALLBACK` would misread a genuine 4.5% print as a failed fetch. Failures are never cached, so a cache hit is always a prior successful live fetch.
 
 ### EV/Revenue model
 
@@ -65,6 +67,18 @@ All FMP API calls read `st.secrets["FMP_KEY"]`. Note: `config.py` reads `FMP_API
 | OVERVALUED | > 1.25× |
 
 Negative EV (cash > mkt_cap + debt) returns `signal = "N/A — Negative EV"` with `ev_revenue_ratio = None`.
+
+### DCF model
+
+`models/dcf.py` → `run_dcf_valuation(ticker)` projects tapered free cash flow, discounts at WACC, and returns `intrinsic_value_per_share`, `margin_of_safety_pct`, and a WACC × terminal-growth `sensitivity_grid`. Statements come from the **real FMP REST API** (via `data/financials.py`'s `_get`), not the yfinance-backed `data/fmp.py` — yfinance caps annual statements at 4 real fiscal years, short of `REQUIRED_HISTORY_YEARS = 5`.
+
+`DCF_TICKERS` is the 10-ticker large-cap set the tab offers (`AAPL`, `COST`, `GE`, `GOOGL`, `LMT`, `META`, `MSFT`, `NVDA`, `V`, `WMT`). It is **not** pre-filtered — the tab checks `gate_status` per ticker and excludes failures. `DCF_TICKERS_PENDING_PAID_TIER` lists tickers whose FMP statement endpoints return HTTP 402 on the free tier (a paywall, not a data-quality failure).
+
+**No BUY/HOLD/SELL logic.** Unlike the other two models, `dcf.py` emits only a `margin_of_safety_pct` and an undervalued/overvalued label. That label is derived from `intrinsic_value_per_share > current_price` directly, *not* from the sign of the MoS figure — with intrinsic value in the denominator, a negative intrinsic value flips the ratio's sign and would otherwise read as "undervalued".
+
+Imports `BETA_FLOOR`, `EQUITY_RISK_PREMIUM`, and `MIN_COST_OF_EQUITY` from `models/rim.py`, aliasing the premium as `MARKET_PREMIUM = EQUITY_RISK_PREMIUM` so both models share one equity risk premium. This makes `rim.py` a dependency of `dcf.py`: `rim.py` must never import from `dcf.py` (circular).
+
+Has its own `CACHE_TTL` and its own `_cache_get`, importing only `_cache_set` and `_db` from `data.fmp`. It also has its own FRED fetcher, `_get_risk_free_rate()`, under cache key `dcf-treasury-yield:DGS10` — separate from `data/fmp.py`'s `treasury-yield:DGS10`, and caching `[value, label]` where `data/fmp.py` caches a bare float. The two fetchers are still duplicated; only the fallback constant is shared (`RF_FALLBACK = _TREASURY_FALLBACK`).
 
 ### Cache system
 
@@ -92,7 +106,7 @@ Uses the stable endpoint: `https://financialmodelingprep.com/stable`. The free t
 
 - **Cache sentinel pattern correctness** — `None` = cache miss (retry), `False` = stable "no data" (skip API), `dict` = valid hit. Transient errors must never write `_SENTINEL`.
 - **Lazy imports in `app.py` elif branches only** — tab modules (`render_*`) are imported inside their `elif` block, never at the top of `app.py`. An eager top-level import crashes all pages if that module fails.
-- **Signal logic correctness in `models/`** — RIM thresholds: BUY ≥ 15% MoS, SELL < 0%. EV/Revenue thresholds: UNDERVALUED < 0.80× median, OVERVALUED > 1.25×. Check boundary conditions (`>` vs `>=`) and that edge cases (negative EV, zero revenue) return a defined signal rather than a computed nonsense value.
+- **Signal logic correctness in `models/`** — RIM thresholds: BUY ≥ 15% MoS, SELL ≤ −15% MoS. EV/Revenue thresholds: UNDERVALUED < 0.80× median, OVERVALUED > 1.25×. Check boundary conditions (`>` vs `>=`) and that edge cases (negative EV, zero revenue) return a defined signal rather than a computed nonsense value.
 - **New features go in new files only** — do not modify `data/fmp.py`, `models/rim.py`, `tabs/earnings_tab.py`, or other existing files when adding features unless explicitly instructed.
 
 ## Known dead code

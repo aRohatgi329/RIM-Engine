@@ -264,7 +264,16 @@ def _render_full_dcf_analysis(ticker: str, result: dict, key_ns: str) -> None:
     grid = result.get("grid")
     if grid is not None:
         _render_sensitivity_grid(grid, current_wacc_pct, current_terminal_growth_pct)
-        st.divider()
+
+    # Risk-free rate provenance: the label distinguishes a live FRED fetch from
+    # the fallback constant, which the rate alone can't convey. Rendered from
+    # inputs (not inside _render_sensitivity_grid) so the helper's signature is
+    # unchanged, and outside the grid guard so the rate is disclosed even when
+    # the grid doesn't compute. Label text is shown as-is, as the model reports it.
+    st.caption(
+        f"Risk-free rate: {inputs['risk_free_rate_pct']:.2f}% — {inputs['risk_free_rate_source']}"
+    )
+    st.divider()
 
     st.subheader("5. Assumptions & Live Valuation")
 
